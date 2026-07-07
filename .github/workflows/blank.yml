@@ -1,36 +1,71 @@
-# This is a basic workflow to help you get started with Actions
-
-name: CI
-
-# Controls when the workflow will run
+name: Build 1o1 DARK SYNTH
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [ main, master ]
   workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: write
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: macos-latest
+            name: macOS
+          - os: ubuntu-latest
+            name: Linux
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Unzip kit (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: unzip -o 1o1-dark-synth-vst.zip -d kit
+      - name: Unzip kit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Expand-Archive -Path 1o1-dark-synth-vst.zip -DestinationPath kit -Force
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev
+      - name: Configure
+        run: cmake -B build -S kit -DCMAKE_BUILD_TYPE=Release
+      - name: Build (Release)
+        run: cmake --build build --config Release
+      - name: Package (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cd build/1o1DarkSynth_artefacts/Release
+          zip -r "$GITHUB_WORKSPACE/1o1-DARK-SYNTH-${{ matrix.name }}.zip" .
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build/1o1DarkSynth_artefacts/Release/* -DestinationPath 1o1-DARK-SYNTH-Windows.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1o1-DARK-SYNTH-${{ matrix.name }}
+          path: 1o1-DARK-SYNTH-${{ matrix.name }}.zip
+          if-no-files-found: warn
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 1o1 DARK SYNTH — Latest Build
+          files: dist/**/*.zip
+          fail_on_unmatched_files: false
