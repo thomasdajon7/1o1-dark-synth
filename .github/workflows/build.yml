@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+env:
+  KIT_URL: "https://steam-synth.preview.emergentagent.com/1o1-dark-synth-vst.zip"
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -19,15 +21,20 @@ jobs:
             name: macOS
           - os: ubuntu-latest
             name: Linux
-    steps:
-      - uses: actions/checkout@v4
-      - name: Unzip kit (Linux/macOS)
+              steps:
+      - name: Fetch plugin source (Linux/macOS)
         if: runner.os != 'Windows'
-        run: unzip -o 1o1-dark-synth-vst.zip -d kit
-      - name: Unzip kit (Windows)
+        run: |
+          curl -fL -o kit.zip "$KIT_URL"
+          unzip -o kit.zip -d kit
+          test -f kit/CMakeLists.txt || { echo "Source not found — is the app awake?"; exit 1; }
+      - name: Fetch plugin source (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Expand-Archive -Path 1o1-dark-synth-vst.zip -DestinationPath kit -Force
+        run: |
+          curl.exe -fL -o kit.zip "$env:KIT_URL"
+          Expand-Archive -Path kit.zip -DestinationPath kit -Force
+          if (-not (Test-Path kit/CMakeLists.txt)) { throw "Source not found — is the app awake?" }
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
