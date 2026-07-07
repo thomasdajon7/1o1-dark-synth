@@ -1,0 +1,86 @@
+Loading...
+Hey Dajon, Quick input needed :
+Agent will continue working after your reply
+Ah — I checked your repo, and here's the situation: the green ✓ is the leftover blank.yml "CI" workflow, which does nothing. The real build never ran because:
+
+Your repo's .github/workflows/ still only has blank.yml (not the build workflow).
+You uploaded the .zip file itself into the repo (I can see 1o1-dark-synth-vst.zip there) instead of its unzipped contents.
+But that actually makes this easy — the zip is already in your repo, so you only need to create one file and I'll have the build unzip it for you. No unzipping on your computer needed. 🎉
+
+Do this (one file, 2 minutes)
+Go to https://github.com/thomasdajon7/1o1-dark-synth
+Click Add file → Create new file
+In the filename box, type exactly:
+.github/workflows/build.yml
+Paste this into the big box:
+name: Build 1o1 DARK SYNTH
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: macos-latest
+            name: macOS
+          - os: ubuntu-latest
+            name: Linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip kit (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: unzip -o 1o1-dark-synth-vst.zip -d kit
+      - name: Unzip kit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Expand-Archive -Path 1o1-dark-synth-vst.zip -DestinationPath kit -Force
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev
+      - name: Configure
+        run: cmake -B build -S kit -DCMAKE_BUILD_TYPE=Release
+      - name: Build (Release)
+        run: cmake --build build --config Release
+      - name: Package (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cd build/1o1DarkSynth_artefacts/Release
+          zip -r "$GITHUB_WORKSPACE/1o1-DARK-SYNTH-${{ matrix.name }}.zip" .
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build/1o1DarkSynth_artefacts/Release/* -DestinationPath 1o1-DARK-SYNTH-Windows.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1o1-DARK-SYNTH-${{ matrix.name }}
+          path: 1o1-DARK-SYNTH-${{ matrix.name }}.zip
+          if-no-files-found: warn
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 1o1 DARK SYNTH — Latest Build
+          files: dist/**/*.zip
+          fail_on_unmatched_files: false
